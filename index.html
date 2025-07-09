@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>WebRTC POC Chat</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 2em auto; }
+    textarea { width: 100%; height: 100px; }
+    #chat { border: 1px solid #ccc; padding: 1em; height: 200px; overflow-y: auto; }
+    #chat p { margin: 0.5em 0; }
+  </style>
+</head>
+<body>
+  <h1>Peer-to-Peer Chat</h1>
+
+  <!-- Controls for manual SDP exchange -->
+  <h2>Step 1: Create Offer / Answer</h2>
+  <button id="makeOffer">Make Offer</button>
+  <button id="makeAnswer">Make Answer</button>
+  <div>
+    <p><strong>Local SDP:</strong></p>
+    <textarea id="localSDP" readonly></textarea>
+    <p><strong>Remote SDP:</strong></p>
+    <textarea id="remoteSDP"></textarea>
+    <button id="setRemote">Set Remote SDP</button>
+  </div>
+
+  <!-- Chat UI -->
+  <h2>Step 2: Chat</h2>
+  <div id="chat"></div>
+  <input type="text" id="messageInput" placeholder="Type a message…" />
+  <button id="sendBtn">Send</button>
+
+  <script>
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    let dc;
+
+    // When a remote data channel arrives (on the answering side)
+    pc.ondatachannel = e => {
+      dc = e.channel;
+      setupDataChannel();
+    };
+
+    // ICE candidates → append to SDP as they arrive
+    pc.onicecandidate = e => {
+      if (e.candidate) return;
+      // all ICE gathered
+      document.getElementById('localSDP').value = JSON.stringify(pc.localDescription);
+    };
+
+    // Button: create offer
+    document.getElementById('makeOffer').onclick = async () => {
+      dc = pc.createDataChannel("chat");
+      setupDataChannel();
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      // wait for ICE to gather, then SDP shows up
+    };
+
+    // Button: create answer (after remote offer is pasted & set)
+    document.getElementById('makeAnswer').onclick = async () => {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      // wait for ICE → SDP shows up
+    };
+
+    // Button: take remote SDP from textarea
+    document.getElementById('setRemote').onclick = async () => {
+      const remote = JSON.parse(document.getElementById('remoteSDP').value);
+      await pc.setRemoteDescription(remote);
+    };
+
+    // Setup handlers for the DataChannel
+    function setupDataChannel() {
+      dc.onopen = () => {
+        appendMessage("[system] DataChannel open");
+      };
+      dc.onmessage = e => {
+        appendMessage("Peer: " + e.data);
+      };
+    }
+
+    // Sending messages
+    document.getElementById('sendBtn').onclick = () => {
+      const txt = document.getElementById('messageInput').value;
+      if (!dc || dc.readyState !== "open") return alert("DataChannel not open yet");
+      dc.send(txt);
+      appendMessage("You: " + txt);
+      document.getElementById('messageInput').value = "";
+    };
+
+    function appendMessage(msg) {
+      const p = document.createElement('p');
+      p.textContent = msg;
+      document.getElementById('chat').appendChild(p);
+      document.getElementById('chat').scrollTop = 1e9;
+    }
+  </script>
+</body>
+</html>
