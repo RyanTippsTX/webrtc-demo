@@ -75,6 +75,12 @@
       document.getElementById('remoteVideo').srcObject.addTrack(e.track);
     };
 
+    // 3) When data channel is established, setup handlers
+    pc.ondatachannel = e => {
+      dc = e.channel;
+      setupDataChannel();
+    };
+
     // ICE gathering → output SDP when complete
     pc.onicecandidate = e => {
       if (!e.candidate) {
