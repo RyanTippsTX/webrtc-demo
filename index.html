@@ -116,12 +116,21 @@
     }
 
     // Send chat messages
-    document.getElementById('sendBtn').onclick = () => {
+    function sendMessage() {
       const txt = document.getElementById('messageInput').value;
+      if (!txt.trim()) return; // Don't send empty messages
       if (!dc || dc.readyState !== "open") return alert("DataChannel not open yet");
       dc.send(txt);
       appendMessage("You: " + txt);
       document.getElementById('messageInput').value = "";
+    }
+
+    // Send messages via button or Enter key press
+    document.getElementById('sendBtn').onclick = sendMessage;
+    document.getElementById('messageInput').onkeypress = (e) => {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
     };
 
     function appendMessage(msg) {
