@@ -44,7 +44,18 @@
   <button id="sendBtn">Send</button>
 
   <script>
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    const pc = new RTCPeerConnection({ iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      // TURN server example
+      // {
+      //   urls: [
+      //     "turn:turn.myprovider.com:3478",         // UDP/TCP
+      //     "turns:turn.myprovider.com:443?transport=tcp"  // TLS over TCP
+      //   ],
+      //   username: "yourTurnUser",     // supplied by provider
+      //   credential: "yourTurnSecret"  // ditto
+      // }
+    ]});
     let dc;
     let localStream;
 
