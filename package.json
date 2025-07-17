@@ -1,0 +1,13 @@
+{
+  "name": "webrtc-demo",
+  "version": "1.0.0",
+  "description": "WebRTC Video + Chat POC with live reload",
+  "scripts": {
+    "dev": "npx live-server --port=8000 --open=/index.html --cors",
+    "start": "npx http-server -p 8000 -c-1 --cors"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2",
+    "http-server": "^14.1.1"
+  }
+} 
