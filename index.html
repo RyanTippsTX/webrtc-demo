@@ -2,17 +2,58 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>WebRTC Video + Chat POC</title>
+  <title>WebRTC Video + Chat + Soundboard POC</title>
   <style>
-    body { font-family: sans-serif; max-width: 700px; margin: 2em auto; }
+    body { font-family: sans-serif; max-width: 800px; margin: 2em auto; }
     textarea { width: 100%; height: 80px; }
     #chat { border: 1px solid #ccc; padding: 1em; height: 150px; overflow-y: auto; margin-bottom: 1em; }
     #videos { display: flex; gap: 1em; margin-bottom: 1em; }
     video { width: 45%; background: #000; }
+    
+    /* Soundboard styling */
+    #soundboard { 
+      border: 2px solid #4CAF50; 
+      padding: 1em; 
+      margin: 1em 0; 
+      border-radius: 8px;
+      background: #f9f9f9;
+    }
+    #soundboard h2 { margin-top: 0; color: #4CAF50; }
+    .sound-button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      margin: 5px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.3s;
+    }
+    .sound-button:hover { background: #45a049; }
+    .sound-button:active { background: #3d8b40; }
+    .sound-button:disabled { 
+      background: #cccccc; 
+      cursor: not-allowed; 
+    }
+    .audio-controls {
+      margin: 10px 0;
+      padding: 10px;
+      background: #e8f5e8;
+      border-radius: 5px;
+    }
+    .audio-controls label {
+      margin-right: 15px;
+      font-weight: bold;
+    }
+    .audio-controls input[type="range"] {
+      width: 100px;
+      margin-right: 10px;
+    }
   </style>
 </head>
 <body>
-  <h1>Peer-to-Peer Video + Chat</h1>
+  <h1>Peer-to-Peer Video + Chat + Soundboard</h1>
 
   <!-- Video elements -->
   <div id="videos">
@@ -20,6 +61,26 @@
     <video id="remoteVideo" autoplay playsinline></video>
   </div>
   <button id="startCam">Start Webcam</button>
+
+  <hr>
+
+  <!-- Soundboard Section -->
+  <div id="soundboard">
+    <h2>🎵 Soundboard</h2>
+    <div class="audio-controls">
+      <label>Mic Volume: <input type="range" id="micVolume" min="0" max="2" step="0.1" value="1"></label>
+      <label>Sound Volume: <input type="range" id="soundVolume" min="0" max="2" step="0.1" value="1"></label>
+    </div>
+    <div id="soundButtons">
+      <button class="sound-button" data-sound="applause">👏 Applause</button>
+      <button class="sound-button" data-sound="drumroll">🥁 Drumroll</button>
+      <button class="sound-button" data-sound="bell">🔔 Bell</button>
+      <button class="sound-button" data-sound="whistle">📢 Whistle</button>
+      <button class="sound-button" data-sound="boing">💥 Boing</button>
+      <button class="sound-button" data-sound="cricket">🦗 Cricket</button>
+    </div>
+    <p><small>💡 Tip: Click soundboard buttons to play audio clips over your WebRTC stream!</small></p>
+  </div>
 
   <hr>
 
@@ -56,16 +117,154 @@
       //   credential: "yourTurnSecret"  // ditto
       // }
     ]});
+    
     let dc;
     let localStream;
+    let audioContext;
+    let micSource;
+    let micGain;
+    let soundGain;
+    let destination;
+    let soundBuffers = {};
+    let isAudioSetup = false;
 
-    // 1) Start webcam and add tracks
+    // Initialize Web Audio API
+    function initAudioContext() {
+      if (!audioContext) {
+        audioContext = new AudioContext();
+        destination = audioContext.createMediaStreamDestination();
+        micGain = audioContext.createGain();
+        soundGain = audioContext.createGain();
+        
+        // Set initial gain values
+        micGain.gain.value = parseFloat(document.getElementById('micVolume').value);
+        soundGain.gain.value = parseFloat(document.getElementById('soundVolume').value);
+        
+        // Connect gain nodes to destination
+        micGain.connect(destination);
+        soundGain.connect(destination);
+        
+        isAudioSetup = true;
+        appendMessage("[system] Audio mixing system initialized");
+      }
+    }
+
+    // Generate simple audio tones for demo purposes
+    function generateTone(frequency, duration, type = 'sine') {
+      const sampleRate = 44100;
+      const samples = duration * sampleRate;
+      const buffer = audioContext.createBuffer(1, samples, sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      for (let i = 0; i < samples; i++) {
+        // Add some fade in/out to avoid clicks
+        const fadeIn = Math.min(1, i / (sampleRate * 0.01));
+        const fadeOut = Math.min(1, (samples - i) / (sampleRate * 0.01));
+        const fade = fadeIn * fadeOut;
+        
+        if (type === 'sine') {
+          data[i] = Math.sin(2 * Math.PI * frequency * i / sampleRate) * fade * 0.3;
+        } else if (type === 'square') {
+          data[i] = (Math.sin(2 * Math.PI * frequency * i / sampleRate) > 0 ? 1 : -1) * fade * 0.2;
+        } else if (type === 'noise') {
+          data[i] = (Math.random() * 2 - 1) * fade * 0.1;
+        }
+      }
+      
+      return buffer;
+    }
+
+    // Pre-generate sound buffers
+    function generateSoundBuffers() {
+      soundBuffers = {
+        applause: generateTone(800, 0.5, 'sine'),
+        drumroll: generateTone(200, 1.0, 'square'),
+        bell: generateTone(1200, 0.3, 'sine'),
+        whistle: generateTone(1500, 0.8, 'sine'),
+        boing: generateTone(400, 0.6, 'square'),
+        cricket: generateTone(3000, 0.4, 'noise')
+      };
+      appendMessage("[system] Soundboard loaded with demo tones");
+    }
+
+    // Play a sound clip
+    function playSound(soundName) {
+      if (!audioContext || !soundBuffers[soundName]) {
+        appendMessage(`[error] Sound '${soundName}' not available`);
+        return;
+      }
+      
+      const buffer = soundBuffers[soundName];
+      const source = audioContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(soundGain);
+      source.start();
+      
+      appendMessage(`[soundboard] Playing ${soundName}`);
+    }
+
+    // Setup soundboard button handlers
+    function setupSoundboard() {
+      const buttons = document.querySelectorAll('.sound-button');
+      buttons.forEach(button => {
+        button.onclick = () => {
+          const soundName = button.dataset.sound;
+          playSound(soundName);
+        };
+      });
+    }
+
+    // Setup volume controls
+    function setupVolumeControls() {
+      document.getElementById('micVolume').oninput = (e) => {
+        if (micGain) {
+          micGain.gain.value = parseFloat(e.target.value);
+        }
+      };
+      
+      document.getElementById('soundVolume').oninput = (e) => {
+        if (soundGain) {
+          soundGain.gain.value = parseFloat(e.target.value);
+        }
+      };
+    }
+
+    // 1) Start webcam and add tracks with audio mixing
     document.getElementById('startCam').onclick = async () => {
-      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      document.getElementById('localVideo').srcObject = localStream;
-      // Add all tracks to the PeerConnection
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-      appendMessage("[system] Webcam started");
+      try {
+        // Initialize audio context and soundboard
+        initAudioContext();
+        generateSoundBuffers();
+        setupSoundboard();
+        setupVolumeControls();
+        
+        // Get microphone stream
+        const micStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        
+        // Create mixed audio stream
+        micSource = audioContext.createMediaStreamSource(micStream);
+        micSource.connect(micGain);
+        
+        // Create mixed stream with video from mic and mixed audio
+        const videoTrack = micStream.getVideoTracks()[0];
+        const mixedAudioTrack = destination.stream.getAudioTracks()[0];
+        
+        localStream = new MediaStream([videoTrack, mixedAudioTrack]);
+        
+        document.getElementById('localVideo').srcObject = localStream;
+        
+        // Add all tracks to the PeerConnection
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        
+        appendMessage("[system] Webcam started with audio mixing enabled");
+        
+        // Enable soundboard buttons
+        document.querySelectorAll('.sound-button').forEach(btn => btn.disabled = false);
+        
+      } catch (error) {
+        appendMessage(`[error] Failed to start webcam: ${error.message}`);
+        console.error('Error starting webcam:', error);
+      }
     };
 
     // 2) When remote track arrives, show it
@@ -139,6 +338,11 @@
       document.getElementById('chat').appendChild(p);
       document.getElementById('chat').scrollTop = 1e9;
     }
+
+    // Initialize soundboard buttons as disabled until webcam starts
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.sound-button').forEach(btn => btn.disabled = true);
+    });
   </script>
 </body>
 </html>
