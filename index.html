@@ -126,12 +126,14 @@
       <label>Sound Volume: <input type="range" id="soundVolume" min="0" max="2" step="0.1" value="1"></label>
     </div>
     <div id="soundButtons">
-      <button class="sound-button" data-sound="applause">👏 Applause</button>
-      <button class="sound-button" data-sound="drumroll">🥁 Drumroll</button>
-      <button class="sound-button" data-sound="bell">🔔 Bell</button>
-      <button class="sound-button" data-sound="whistle">📢 Whistle</button>
-      <button class="sound-button" data-sound="boing">💥 Boing</button>
-      <button class="sound-button" data-sound="cricket">🦗 Cricket</button>
+      <button class="sound-button" data-sound="victory_confetti">🎉 Victory Confetti</button>
+      <button class="sound-button" data-sound="smack">👊 Smack</button>
+      <button class="sound-button" data-sound="sheep_baah">🐑 Sheep Baah</button>
+      <button class="sound-button" data-sound="laser_shot">🔫 Laser Shot</button>
+      <button class="sound-button" data-sound="horray_fireworks">🎆 Hooray Fireworks</button>
+      <button class="sound-button" data-sound="coins_clinking">💰 Coins Clinking</button>
+      <button class="sound-button" data-sound="cash_register_sfx">💳 Cash Register</button>
+      <button class="sound-button" data-sound="DRUMROLL">🥁 Drumroll</button>
     </div>
     <p><small>💡 Tip: Click soundboard buttons to play audio clips over your WebRTC stream!</small></p>
   </div>
@@ -204,42 +206,46 @@
       }
     }
 
-    // Generate simple audio tones for demo purposes
-    function generateTone(frequency, duration, type = 'sine') {
-      const sampleRate = 44100;
-      const samples = duration * sampleRate;
-      const buffer = audioContext.createBuffer(1, samples, sampleRate);
-      const data = buffer.getChannelData(0);
+    // Load audio file from the sounds folder
+    async function loadAudioFile(filename) {
+      try {
+        const response = await fetch(`sounds/${filename}.wav`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return await audioContext.decodeAudioData(arrayBuffer);
+      } catch (error) {
+        console.error(`Failed to load ${filename}.wav:`, error);
+        appendMessage(`[error] Failed to load ${filename}.wav`);
+        return null;
+      }
+    }
+
+    // Pre-load all sound buffers from WAV files
+    async function loadSoundBuffers() {
+      const soundFiles = [
+        'victory_confetti',
+        'smack', 
+        'sheep_baah',
+        'laser_shot',
+        'horray_fireworks',
+        'coins_clinking',
+        'cash_register_sfx',
+        'DRUMROLL'
+      ];
       
-      for (let i = 0; i < samples; i++) {
-        // Add some fade in/out to avoid clicks
-        const fadeIn = Math.min(1, i / (sampleRate * 0.01));
-        const fadeOut = Math.min(1, (samples - i) / (sampleRate * 0.01));
-        const fade = fadeIn * fadeOut;
-        
-        if (type === 'sine') {
-          data[i] = Math.sin(2 * Math.PI * frequency * i / sampleRate) * fade * 0.3;
-        } else if (type === 'square') {
-          data[i] = (Math.sin(2 * Math.PI * frequency * i / sampleRate) > 0 ? 1 : -1) * fade * 0.2;
-        } else if (type === 'noise') {
-          data[i] = (Math.random() * 2 - 1) * fade * 0.1;
+      appendMessage("[system] Loading soundboard audio files...");
+      
+      for (const filename of soundFiles) {
+        const buffer = await loadAudioFile(filename);
+        if (buffer) {
+          soundBuffers[filename] = buffer;
         }
       }
       
-      return buffer;
-    }
-
-    // Pre-generate sound buffers
-    function generateSoundBuffers() {
-      soundBuffers = {
-        applause: generateTone(800, 0.5, 'sine'),
-        drumroll: generateTone(200, 1.0, 'square'),
-        bell: generateTone(1200, 0.3, 'sine'),
-        whistle: generateTone(1500, 0.8, 'sine'),
-        boing: generateTone(400, 0.6, 'square'),
-        cricket: generateTone(3000, 0.4, 'noise')
-      };
-      appendMessage("[system] Soundboard loaded with demo tones");
+      const loadedCount = Object.keys(soundBuffers).length;
+      appendMessage(`[system] Soundboard loaded with ${loadedCount} audio files`);
     }
 
     // Play a sound clip
@@ -289,7 +295,7 @@
       try {
         // Initialize audio context and soundboard
         initAudioContext();
-        generateSoundBuffers();
+        await loadSoundBuffers();
         setupSoundboard();
         setupVolumeControls();
         
@@ -439,3 +445,4 @@
   </script>
 </body>
 </html>
+
